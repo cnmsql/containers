@@ -66,6 +66,11 @@ jobs:
         repo="${{ env.REGISTRY }}/${{ github.repository_owner }}/cloudnative-mysql-instance"
         # GHCR repositories must be lowercase.
         repo="$(echo "$repo" | tr '[:upper:]' '[:lower:]')"
+        # On tag pushes, publish release tags (<version>-<patch> + moving <version>).
+        # Otherwise, publish a commit-pinned tag: <version>-<short-sha>.
+        if [ "${{ github.ref_type }}" != "tag" ]; then
+          export COMMIT_TAG="$(echo "${{ github.sha }}" | cut -c1-7)"
+        fi
         CONTAINER_TOOL=docker \
           REGISTRY="$repo" \
           GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \

@@ -15,6 +15,9 @@
 #   REGISTRY            image name prefix   (default: cloudnative-mysql-instance)
 #   PUSH                set to 1 to push
 #   PATCH_VERSION       manual patch override (applies to all versions being built)
+#   COMMIT_TAG          if set, tag as <MYSQL_VERSION>-<COMMIT_TAG> (e.g. a commit
+#                       hash) instead of the auto-incremented patch, and skip the
+#                       moving <MYSQL_VERSION> tag. Used for non-release builds.
 #   GH_TOKEN            GitHub token for registry tag lookup (CI)
 #   CONTAINER_TOOL                          (default: docker)
 #
@@ -147,13 +150,19 @@ PY
 build_one() {
   local version="$1" base="$2" ps="$3" pxb="$4" pxbPkg="$5" component="$6"
 
-  local patch
-  patch="$(resolve_patch "${REGISTRY}" "${version}")"
-
-  local versioned_tag="${REGISTRY}:${version}-${patch}"
-  local latest_tag="${REGISTRY}:${version}"
-
-  echo ">> building ${versioned_tag} (base=${base} ps=${ps} pxb=${pxb} patch=${patch} component=${component})"
+  # Release builds use an auto-incremented patch plus a moving <version> tag.
+  # Non-release builds (COMMIT_TAG set) use <version>-<commit-hash> only.
+  local versioned_tag latest_tag=""
+  if [ -n "${COMMIT_TAG:-}" ]; then
+    versioned_tag="${REGISTRY}:${version}-${COMMIT_TAG}"
+    echo ">> building ${versioned_tag} (base=${base} ps=${ps} pxb=${pxb} component=${component})"
+  else
+    local patch
+    patch="$(resolve_patch "${REGISTRY}" "${version}")"
+    versioned_tag="${REGISTRY}:${version}-${patch}"
+    latest_tag="${REGISTRY}:${version}"
+    echo ">> building ${versioned_tag} (base=${base} ps=${ps} pxb=${pxb} patch=${patch} component=${component})"
+  fi
 
   "${CONTAINER_TOOL}" build \
     -f "${repo_root}/Dockerfile.instance" \
@@ -166,13 +175,17 @@ build_one() {
     "${repo_root}"
 
   # Also tag with the bare version (moving tag pointing to latest patch).
-  "${CONTAINER_TOOL}" tag "${versioned_tag}" "${latest_tag}"
+  if [ -n "${latest_tag}" ]; then
+    "${CONTAINER_TOOL}" tag "${versioned_tag}" "${latest_tag}"
+  fi
 
   if [ "${PUSH:-}" = "1" ]; then
     echo ">> pushing ${versioned_tag}"
     "${CONTAINER_TOOL}" push "${versioned_tag}"
-    echo ">> pushing ${latest_tag}"
-    "${CONTAINER_TOOL}" push "${latest_tag}"
+    if [ -n "${latest_tag}" ]; then
+      echo ">> pushing ${latest_tag}"
+      "${CONTAINER_TOOL}" push "${latest_tag}"
+    fi
   fi
 }
 
