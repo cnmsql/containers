@@ -116,4 +116,4 @@ on `v*` tags, and you can also start it by hand with `workflow_dispatch`.
 
 ## License
 
-[GPL-3.0](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).
