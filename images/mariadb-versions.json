@@ -1,0 +1,26 @@
+[
+  {
+    "version": "10.11",
+    "base": "debian:bookworm-slim",
+    "mariadbVersion": "10.11",
+    "serverVersion": "10.11"
+  },
+  {
+    "version": "11.4",
+    "base": "debian:bookworm-slim",
+    "mariadbVersion": "11.4",
+    "serverVersion": "11.4"
+  },
+  {
+    "version": "11.8",
+    "base": "debian:bookworm-slim",
+    "mariadbVersion": "11.8",
+    "serverVersion": "11.8"
+  },
+  {
+    "version": "12.3",
+    "base": "debian:bookworm-slim",
+    "mariadbVersion": "12.3",
+    "serverVersion": "12.3"
+  }
+]

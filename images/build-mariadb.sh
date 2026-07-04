@@ -1,37 +1,32 @@
 #!/usr/bin/env bash
-# Build the cnmsql slim instance image(s) from images/versions.json.
+# Build the cnmsql slim MariaDB instance image(s) from images/mariadb-versions.json.
 #
-# Tagging: <MYSQL_VERSION>-<PATCH_VERSION> (e.g., 8.0-1, 8.0-2, 8.4-1)
-# The patch version is auto-incremented by querying the target registry for
-# existing tags. Additionally, a bare <MYSQL_VERSION> moving tag (e.g., 8.0)
-# points to the latest-patch image.
+# The MariaDB counterpart to build.sh. Tagging, patch auto-increment and the
+# moving <version> tag all behave identically (see build.sh for the details);
+# the only differences are the versions file, the Dockerfile, and the default
+# image name.
 #
 # Usage:
-#   images/build.sh                         # build every version, auto-detect patch
-#   images/build.sh 8.0 8.4                 # build only the named versions
-#   images/build.sh 8.0 --patch=5           # force patch version 5 for 8.0
+#   images/build-mariadb.sh                  # build every version, auto-detect patch
+#   images/build-mariadb.sh 11.4             # build only the named versions
+#   images/build-mariadb.sh 11.4 --patch=5   # force patch version 5 for 11.4
 #
 # Environment:
-#   REGISTRY            image name prefix   (default: cnmsql-instance)
+#   REGISTRY            image name prefix   (default: cnmsql-mariadb-instance)
 #   PUSH                set to 1 to push
 #   PATCH_VERSION       manual patch override (applies to all versions being built)
-#   COMMIT_TAG          if set, tag as <MYSQL_VERSION>-<COMMIT_TAG> (e.g. a commit
-#                       hash) instead of the auto-incremented patch, and skip the
-#                       moving <MYSQL_VERSION> tag. Used for non-release builds.
+#   COMMIT_TAG          if set, tag as <VERSION>-<COMMIT_TAG> (e.g. a commit hash)
+#                       instead of the auto-incremented patch, and skip the moving
+#                       <VERSION> tag. Used for non-release builds.
 #   GH_TOKEN            GitHub token for registry tag lookup (CI)
 #   CONTAINER_TOOL                          (default: docker)
-#
-# Auto-detection strategies (tried in order):
-#   1. GitHub Packages API   — if GH_TOKEN is set, queries GHCR tags
-#   2. crane                 — if the go-containerregistry/crane image is reachable
-#   3. Manual override       — PATCH_VERSION env var or --patch=N flag required
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${here}/.." && pwd)"
-versions_json="${here}/versions.json"
+versions_json="${here}/mariadb-versions.json"
 
-REGISTRY="${REGISTRY:-cnmsql-instance}"
+REGISTRY="${REGISTRY:-cnmsql-mariadb-instance}"
 CONTAINER_TOOL="${CONTAINER_TOOL:-docker}"
 PATCH_VERSION="${PATCH_VERSION:-}"
 
@@ -39,7 +34,7 @@ PATCH_VERSION="${PATCH_VERSION:-}"
 # shellcheck source=images/lib.sh
 . "${here}/lib.sh"
 
-# Print "version base ps pxb pxbPackage component" for each requested version.
+# Print "version base mariadbVersion" for each requested version.
 select_versions() {
   python3 - "$versions_json" "$@" <<'PY'
 import json, sys
@@ -50,34 +45,31 @@ want = set(want)
 for r in rows:
     if want and r["version"] not in want:
         continue
-    print(r["version"], r["base"], r["ps"], r["pxb"], r["pxbPackage"], r.get("component", "release"))
+    print(r["version"], r["base"], r.get("mariadbVersion", r["version"]))
 PY
 }
 
 build_one() {
-  local version="$1" base="$2" ps="$3" pxb="$4" pxbPkg="$5" component="$6"
+  local version="$1" base="$2" mariadb_version="$3"
 
   # Release builds use an auto-incremented patch plus a moving <version> tag.
   # Non-release builds (COMMIT_TAG set) use <version>-<commit-hash> only.
   local versioned_tag latest_tag=""
   if [ -n "${COMMIT_TAG:-}" ]; then
     versioned_tag="${REGISTRY}:${version}-${COMMIT_TAG}"
-    echo ">> building ${versioned_tag} (base=${base} ps=${ps} pxb=${pxb} component=${component})"
+    echo ">> building ${versioned_tag} (base=${base} mariadb=${mariadb_version})"
   else
     local patch
     patch="$(resolve_patch "${REGISTRY}" "${version}")"
     versioned_tag="${REGISTRY}:${version}-${patch}"
     latest_tag="${REGISTRY}:${version}"
-    echo ">> building ${versioned_tag} (base=${base} ps=${ps} pxb=${pxb} patch=${patch} component=${component})"
+    echo ">> building ${versioned_tag} (base=${base} mariadb=${mariadb_version} patch=${patch})"
   fi
 
   "${CONTAINER_TOOL}" build \
-    -f "${repo_root}/Dockerfile.instance" \
+    -f "${repo_root}/Dockerfile.mariadb-instance" \
     --build-arg "BASE_IMAGE=${base}" \
-    --build-arg "PS_REPO=${ps}" \
-    --build-arg "PXB_REPO=${pxb}" \
-    --build-arg "PXB_PACKAGE=${pxbPkg}" \
-    --build-arg "REPO_COMPONENT=${component}" \
+    --build-arg "MARIADB_VERSION=${mariadb_version}" \
     -t "${versioned_tag}" \
     "${repo_root}"
 
@@ -97,8 +89,7 @@ build_one() {
 }
 
 # Parse --patch=N arguments out of the positional args before feeding them to
-# select_versions. Multiple --patch flags apply counter-intuitively to the NEXT
-# version, so reposition them: --patch=N should precede the version it belongs to.
+# select_versions.
 declare -a versions=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -118,8 +109,8 @@ while [ $# -gt 0 ]; do
 done
 
 rc=0
-while read -r version base ps pxb pxbPkg component; do
+while read -r version base mariadb_version; do
   [ -z "${version}" ] && continue
-  build_one "${version}" "${base}" "${ps}" "${pxb}" "${pxbPkg}" "${component}" || rc=1
+  build_one "${version}" "${base}" "${mariadb_version}" || rc=1
 done < <(select_versions "${versions[@]}")
 exit "${rc}"

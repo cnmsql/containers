@@ -1,0 +1,115 @@
+# Our own slim MariaDB instance image.
+#
+# The MariaDB counterpart to Dockerfile.instance (which builds Percona Server).
+# Same philosophy: start from a minimal Debian base and install only what the
+# instance manager needs at runtime — the MariaDB server (`mariadbd`), its
+# backup tool (`mariabackup`, from mariadb-backup), and the handful of client
+# binaries used for liveness checks and binlog streaming. Docs, man pages,
+# locales, the test suite and static libraries are stripped.
+#
+# MariaDB, unlike Percona/MySQL, has no `mysqld --initialize`: a fresh data dir
+# is bootstrapped with `mariadb-install-db` (a.k.a. `mysql_install_db`), so we
+# deliberately keep that tool in the image.
+#
+# The image is parameterized by build args so a single Dockerfile covers every
+# supported MariaDB series (see images/mariadb-versions.json for the matrix):
+#
+#   docker build -f Dockerfile.mariadb-instance \
+#     --build-arg BASE_IMAGE=debian:bookworm-slim \
+#     --build-arg MARIADB_VERSION=11.4 \
+#     -t cnmsql-mariadb-instance:11.4-1 .
+#
+# The runtime stage runs as an unprivileged user (uid 1001); mariadbd and the
+# manager never need root, and every port they bind is above 1024.
+
+ARG BASE_IMAGE=debian:bookworm-slim
+
+FROM ${BASE_IMAGE}
+
+# Re-declare the args needed in this stage (ARGs do not cross FROM boundaries).
+# MARIADB_VERSION selects the MariaDB series to enable via mariadb_repo_setup,
+# e.g. 11.4 -> --mariadb-server-version="mariadb-11.4". "latest-LTS" also works.
+ARG MARIADB_VERSION=11.4
+
+# Fixed, unprivileged identity for the server. Created before package install so
+# the mariadb-server postinst reuses it instead of allocating a dynamic uid;
+# gid 0 (root group) + group-writable data dirs keep the image usable under
+# arbitrary-uid platforms (OpenShift) without granting any real privilege.
+ARG MYSQL_UID=1001
+ARG MYSQL_GID=1001
+
+RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
+    groupadd -g "${MYSQL_GID}" mysql; \
+    useradd -u "${MYSQL_UID}" -g mysql -s /usr/sbin/nologin -M mysql; \
+    # Stop package postinst scripts from trying to start mariadbd during build.
+    printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d; \
+    chmod +x /usr/sbin/policy-rc.d; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg2; \
+    # MariaDB's official apt repo bootstrap. Pins the requested server series;
+    # writes a Deb822 source and installs the signing key under /etc/apt/keyrings.
+    curl -fsSL https://r.mariadb.com/downloads/mariadb_repo_setup \
+      | bash -s -- --mariadb-server-version="mariadb-${MARIADB_VERSION}" --skip-maxscale; \
+    apt-get update; \
+    # The instance manager drives the server by its MySQL names (`mysqld`,
+    # `mysqladmin`, `mysqlbinlog`, `mysql_install_db`) because it is shared with
+    # the Percona image. Newer MariaDB series (11.x/12.x) ship those legacy names
+    # only in the mariadb-*-compat packages, which --no-install-recommends would
+    # otherwise drop; older series (10.x) ship them directly and have no such
+    # packages. Install the compat packages only when the enabled repo provides
+    # them, so a single Dockerfile covers every series.
+    compat=""; \
+    for p in mariadb-server-compat mariadb-client-compat; do \
+        if apt-cache show "$p" > /dev/null 2>&1; then compat="$compat $p"; fi; \
+    done; \
+    apt-get install -y --no-install-recommends \
+        mariadb-server mariadb-backup ${compat}; \
+    # Trim everything the manager does not need at runtime.
+    #   - docs/man/locale: never used in a running instance;
+    #   - the mysql/mariadb test suite (kept out by not installing mariadb-test,
+    #     but any stray copy under /usr/share is removed too);
+    #   - static (.a) libraries: dev artefacts, not loaded at runtime.
+    rm -rf \
+        /usr/share/doc /usr/share/doc-base /usr/share/man /usr/share/info \
+        /usr/share/lintian /usr/share/locale \
+        /usr/share/mysql*/mysql-test /usr/share/mysql*/mariadb-test \
+        /var/lib/apt/lists/* /var/cache/apt/*; \
+    find /usr/lib -name '*.a' -delete; \
+    # Drop the bulky client utilities the instance does not need. MariaDB ships
+    # each tool as a real `mariadb-*` binary plus a legacy `mysql*` symlink, so
+    # we remove both names. We keep: mariadb/mysql + mariadb-admin/mysqladmin
+    # (operator debugging via `kubectl exec`, liveness ping), mariadb-binlog/
+    # mysqlbinlog (binlog streaming / PITR), mariabackup (the backup suite), and
+    # mariadb-install-db/mysql_install_db (data-dir bootstrap). rm -f tolerates a
+    # tool being absent on a given series.
+    for b in mariadb-dump mysqldump \
+             mariadb-check mysqlcheck \
+             mariadb-import mysqlimport \
+             mariadb-show mysqlshow \
+             mariadb-slap mysqlslap \
+             mariadb-upgrade mysql_upgrade \
+             mariadb-access mysqlaccess \
+             mariadb-hotcopy mysqlhotcopy \
+             mariadb-convert-table-format mysql_convert_table_format \
+             mariadb-find-rows mysql_find_rows \
+             mariadb-fix-extensions mysql_fix_extensions \
+             mariadb-setpermission mysql_setpermission \
+             mariadb-secure-installation mysql_secure_installation \
+             mariadb-tzinfo-to-sql mysql_tzinfo_to_sql \
+             mariadb-waitpid mysql_waitpid \
+             mariadb-dumpslow mysqldumpslow \
+             myisamchk myisampack myisamlog myisam_ftdump; do \
+        rm -f "/usr/bin/$b"; \
+    done; \
+    apt-get purge -y --auto-remove curl gnupg2; \
+    rm -f /usr/sbin/policy-rc.d; \
+    # Ship an empty, mysql-owned data dir and runtime dir; the manager runs
+    # mariadb-install-db / join into the (PVC-backed) data dir at first boot.
+    rm -rf /var/lib/mysql; \
+    mkdir -p /var/lib/mysql /var/run/mysqld; \
+    chown -R "${MYSQL_UID}:0" /var/lib/mysql /var/run/mysqld; \
+    chmod -R g=u /var/lib/mysql /var/run/mysqld
+
+USER ${MYSQL_UID}
