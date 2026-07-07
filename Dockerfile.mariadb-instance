@@ -85,7 +85,6 @@ RUN set -eux; \
     # mariadb-install-db/mysql_install_db (data-dir bootstrap). rm -f tolerates a
     # tool being absent on a given series.
     for b in mariadb-dump mysqldump \
-             mariadb-check mysqlcheck \
              mariadb-import mysqlimport \
              mariadb-show mysqlshow \
              mariadb-slap mysqlslap \
