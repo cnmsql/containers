@@ -89,7 +89,6 @@ RUN set -eux; \
              mariadb-import mysqlimport \
              mariadb-show mysqlshow \
              mariadb-slap mysqlslap \
-             mariadb-upgrade mysql_upgrade \
              mariadb-access mysqlaccess \
              mariadb-hotcopy mysqlhotcopy \
              mariadb-convert-table-format mysql_convert_table_format \
