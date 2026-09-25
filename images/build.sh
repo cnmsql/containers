@@ -81,6 +81,10 @@ build_one() {
     -t "${versioned_tag}" \
     "${repo_root}"
 
+  # Fail before tagging or pushing if a tool the instance manager runs is gone.
+  # Explicit return: build_one runs under `|| rc=1`, which disables set -e.
+  "${here}/check-tools.sh" "${versioned_tag}" "${here}/required-tools.txt" || return 1
+
   # Also tag with the bare version (moving tag pointing to latest patch).
   if [ -n "${latest_tag}" ]; then
     "${CONTAINER_TOOL}" tag "${versioned_tag}" "${latest_tag}"

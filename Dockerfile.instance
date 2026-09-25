@@ -3,8 +3,12 @@
 # Instead of layering onto the fat upstream `percona/percona-server` image, we
 # build from a minimal Debian base and install only what the instance manager
 # needs at runtime: the Percona Server `mysqld` (plus its init tooling),
-# XtraBackup, and the `manager` binary itself. Everything else — the mysql
-# client, docs, man pages, the mysql-test suite, debug builds — is stripped.
+# XtraBackup, and the few client tools the manager executes (`mysql`,
+# `mysqlbinlog`, `mysqldump`). The `manager` binary itself is copied in by the
+# operator at Pod start. Everything else — the other mysql client utilities,
+# docs, man pages, the mysql-test suite, debug builds — is stripped. The tools
+# the manager relies on are listed in images/required-tools.txt and checked
+# after every build.
 #
 # The image is parameterized by build args so a single Dockerfile covers every
 # supported version (see images/versions.json for the matrix):
@@ -86,9 +90,10 @@ RUN set -eux; \
     find /usr/lib -name '*.a' -delete; \
     # Drop the bulky mysql client utilities the instance does not need. We keep:
     # mysql + mysqladmin (operator debugging via `kubectl exec`, and liveness
-    # ping), mysqlbinlog (binlog streaming / PITR), and the XtraBackup suite.
-    # rm -f tolerates a tool being absent on a version.
-    for b in mysqldump mysqlpump mysqlcheck mysqlshow \
+    # ping), mysqlbinlog (binlog streaming / PITR), mysqldump (logical backups),
+    # and the XtraBackup suite. mysqlpump stays stripped: it is deprecated in
+    # 8.0.34 and gone in 8.4. rm -f tolerates a tool being absent on a version.
+    for b in mysqlpump mysqlcheck mysqlshow \
              mysqlimport mysqlslap mysqlanalyze mysqloptimize mysqlrepair \
              mysqldumpslow mysqld_multi mysql_upgrade mysql_secure_installation \
              mysql_migrate_keyring mysql_ssl_rsa_setup mysql_tzinfo_to_sql \

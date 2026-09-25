@@ -7,8 +7,8 @@ This repository builds the **instance image**, which is the MySQL pod the
 operator runs. It is a slim, multi-version Percona Server image built from a
 minimal Debian base. Rather than layering on top of the large upstream
 `percona/percona-server` image, it installs only what the instance manager needs
-to run: `mysqld`, XtraBackup, and a few utilities used for debugging and
-replication. Docs, man pages, locales, the `mysql-test` suite, debug builds, and
+to run: `mysqld`, XtraBackup, and a few client tools used for debugging,
+replication and logical backups. Docs, man pages, locales, the `mysql-test` suite, debug builds, and
 the telemetry agent are removed.
 
 ## Layout
@@ -22,7 +22,10 @@ the telemetry agent are removed.
 | [`images/build.sh`](images/build.sh) | Percona build driver. Reads `versions.json`, works out patch numbers, builds and optionally pushes the images. |
 | [`images/build-mariadb.sh`](images/build-mariadb.sh) | MariaDB build driver. Same behaviour as `build.sh`, reads `mariadb-versions.json`. |
 | [`images/lib.sh`](images/lib.sh) | Shared helpers (patch-version auto-detection) sourced by both build drivers. |
-| [`.github/workflows/build.yml`](.github/workflows/build.yml) | CI. Builds each version of both flavours in the matrix and pushes to GHCR on pushes to `main` and `v*` tags. |
+| [`images/required-tools.txt`](images/required-tools.txt) | The binaries the instance manager runs in the Percona image. Checked after every build. |
+| [`images/mariadb-required-tools.txt`](images/mariadb-required-tools.txt) | The same list for the MariaDB image. |
+| [`images/check-tools.sh`](images/check-tools.sh) | Runs a built image and fails if a binary from a tools list is missing or broken. |
+| [`.github/workflows/build.yml`](.github/workflows/build.yml) | CI. Builds and checks each version of both flavours in the matrix. Pushes to GHCR on pushes to `main` and `v*` tags. |
 
 ## Image design
 
@@ -35,9 +38,30 @@ group). The data directories are group-writable, so the image also works on
 platforms that assign an arbitrary uid, such as OpenShift, without granting real
 privilege. `mysqld` never needs root and binds only ports above 1024.
 
-The build keeps `mysql` and `mysqladmin` (for operator debugging and liveness
-pings), `mysqlbinlog` (for binlog streaming and PITR), and the XtraBackup suite.
-Everything else is dropped.
+The build keeps `mysql` and `mysqladmin` (for operator debugging, liveness
+pings, PITR replay and loading dumps), `mysqlbinlog` (for binlog streaming and
+PITR), `mysqldump` (for logical backups), and the XtraBackup suite. Everything
+else is dropped, including `mysqlpump`, which is deprecated in 8.0 and removed
+in 8.4.
+
+### Required tools
+
+The instance manager runs some binaries from the image directly: the server,
+the backup and stream tools, the binlog client, the SQL client and the dump
+tool. They are listed in [`images/required-tools.txt`](images/required-tools.txt)
+and [`images/mariadb-required-tools.txt`](images/mariadb-required-tools.txt).
+After each build, [`images/check-tools.sh`](images/check-tools.sh) runs the new
+image and checks that every listed binary is on `PATH` and starts (most with
+`--version`). If one fails, the build stops before the image is tagged or
+pushed.
+
+When you remove a binary from an image, check the list first. When the operator
+starts running a new binary, add it to the list in the same change that adds it
+to the image.
+
+Images published before logical backup support strip the dump tool, so
+`cnmsql` logical backups fail on them with `LogicalToolUnavailable`. Use a
+newer patch tag of the same series.
 
 `percona-release` is left installed on purpose. `percona-server-server` depends
 on it through `percona-telemetry-agent`, so removing it would also remove
@@ -52,6 +76,8 @@ counterpart to the Percona image, following the same principles: a
 `mariadb-backup`, the latter providing `mariabackup`), the same unprivileged
 uid `1001` / gid `0` identity, and the same aggressive stripping of docs, man
 pages, locales and static libraries. MariaDB has no telemetry agent to remove.
+It keeps `mariadb-dump` for logical backups. The legacy `mysqldump` alias is
+removed, since the operator calls `mariadb-dump`.
 
 The instance manager is shared with the Percona image and drives the server by
 its MySQL names (`mysqld`, `mysqladmin`, `mysqlbinlog`, `mysql_install_db`).
@@ -154,11 +180,17 @@ images/build.sh 8.0
 ## CI
 
 [`.github/workflows/build.yml`](.github/workflows/build.yml) reads the version
-lists from `versions.json` and `mariadb-versions.json`, builds each version of
-both flavours in parallel, and pushes the images to
-`ghcr.io/<owner>/cnmsql-instance` and `ghcr.io/<owner>/cnmsql-mariadb-instance`.
-It runs on pushes to `main` and on `v*` tags, and you can also start it by hand
-with `workflow_dispatch`.
+lists from `versions.json` and `mariadb-versions.json`, then builds and checks
+each version of both flavours in parallel (see [Required tools](#required-tools)).
+
+- On pushes to `main`, it pushes `<version>-<short-sha>` tags.
+- On `v*` tags, it pushes release tags (`<version>-<patch>` and the moving
+  `<version>`).
+- On pull requests, it only builds and checks. It never logs in or pushes.
+
+Images go to `ghcr.io/<owner>/cnmsql-instance` and
+`ghcr.io/<owner>/cnmsql-mariadb-instance`. You can also start the workflow by
+hand with `workflow_dispatch`.
 
 ## License
 
