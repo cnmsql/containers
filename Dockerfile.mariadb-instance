@@ -4,8 +4,10 @@
 # Same philosophy: start from a minimal Debian base and install only what the
 # instance manager needs at runtime — the MariaDB server (`mariadbd`), its
 # backup tool (`mariabackup`, from mariadb-backup), and the handful of client
-# binaries used for liveness checks and binlog streaming. Docs, man pages,
-# locales, the test suite and static libraries are stripped.
+# binaries used for liveness checks, binlog streaming and logical backups. Docs,
+# man pages, locales, the test suite and static libraries are stripped. The
+# tools the manager relies on are listed in images/mariadb-required-tools.txt
+# and checked after every build.
 #
 # MariaDB, unlike Percona/MySQL, has no `mysqld --initialize`: a fresh data dir
 # is bootstrapped with `mariadb-install-db` (a.k.a. `mysql_install_db`), so we
@@ -81,10 +83,12 @@ RUN set -eux; \
     # each tool as a real `mariadb-*` binary plus a legacy `mysql*` symlink, so
     # we remove both names. We keep: mariadb/mysql + mariadb-admin/mysqladmin
     # (operator debugging via `kubectl exec`, liveness ping), mariadb-binlog/
-    # mysqlbinlog (binlog streaming / PITR), mariabackup (the backup suite), and
-    # mariadb-install-db/mysql_install_db (data-dir bootstrap). rm -f tolerates a
-    # tool being absent on a given series.
-    for b in mariadb-dump mysqldump \
+    # mysqlbinlog (binlog streaming / PITR), mariadb-dump (logical backups),
+    # mariabackup (the backup suite), and mariadb-install-db/mysql_install_db
+    # (data-dir bootstrap). The mysqldump alias is still removed: the manager
+    # calls mariadb-dump, the real binary on every supported series. rm -f
+    # tolerates a tool being absent on a given series.
+    for b in mysqldump \
              mariadb-import mysqlimport \
              mariadb-show mysqlshow \
              mariadb-slap mysqlslap \

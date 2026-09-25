@@ -1,0 +1,32 @@
+# Binaries the cnmsql instance manager executes in the MariaDB image.
+# images/check-tools.sh runs every built image against this list and fails the
+# build when a binary is missing or its probe does not exit 0, so a slimming
+# pass in a Dockerfile can't quietly remove a tool the operator needs.
+#
+# Format: <binary> [probe args]
+#   probe args  arguments that make the binary print something and exit 0
+#               (default: --version). "-" only checks that the binary is on
+#               PATH and executable, for tools with no side-effect-free probe.
+#
+# Keep in sync with pkg/engine in cnmsql/cnmsql.
+
+# Server.
+mariadbd
+# Data-dir bootstrap. A shell script: --version starts an install, and --help
+# exits 1. It calls my_print_defaults and resolveip.
+mariadb-install-db -
+my_print_defaults
+resolveip
+# System table upgrade after a server upgrade (exits 1 on --version and
+# --help). It runs mariadb-check itself.
+mariadb-upgrade -
+mariadb-check
+# Physical backups, clones and restores (mbstream has no --version).
+mariabackup
+mbstream --help
+# Binlog archiving and PITR decode.
+mariadb-binlog
+# PITR replay, and loading logical dumps.
+mariadb
+# Logical backups.
+mariadb-dump
