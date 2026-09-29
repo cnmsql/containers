@@ -21,12 +21,22 @@
 # Package sources are verified against the Percona signing keyring committed in
 # keys/percona-keyring.gpg: nothing is downloaded and trusted at build time.
 #
-# The runtime stage runs as an unprivileged user (uid 1001); mysqld and the
-# manager never need root, and every port they bind is above 1024.
+# The image runs as an unprivileged user (uid 1001); mysqld and the manager
+# never need root, and every port they bind is above 1024.
+#
+# Two runtime targets share the same pinned packages:
+#
+#   debian      the packages installed on the Debian base (tags *-bookworm);
+#   distroless  the same files, minus the package manager, shell and every
+#               other tool the server does not load, on a distroless base
+#               (tags *-distroless). See build/distroless-rootfs.sh.
 
 ARG BASE_IMAGE
+ARG DISTROLESS_IMAGE
 
-FROM ${BASE_IMAGE}
+FROM ${DISTROLESS_IMAGE} AS distroless-base
+
+FROM ${BASE_IMAGE} AS debian
 
 # Re-declare the args needed in this stage (ARGs do not cross FROM boundaries).
 # PS_VERSION and PXB_VERSION are exact Debian package versions, e.g.
@@ -109,3 +119,33 @@ RUN set -eux; \
     chmod -R g=u /var/lib/mysql /var/run/mysqld
 
 USER ${MYSQL_UID}
+
+# Everything the distroless image adds to its base, collected from the Debian
+# stage above so both targets carry byte-identical server files.
+FROM debian AS distroless-rootfs
+USER root
+COPY build/distroless-rootfs.sh /usr/local/bin/distroless-rootfs
+COPY --from=distroless-base /var/lib/dpkg/status.d /distroless/status.d
+COPY --from=distroless-base /etc/passwd /etc/group /rootfs/etc/
+ARG MYSQL_UID=1001
+ARG MYSQL_GID=1001
+# Seed with every Percona package installed above (server, client, XtraBackup;
+# 9.7 splits them further into -core and -plugins packages), except the
+# telemetry agent, whose binary the Debian stage already deleted.
+RUN set -eux; \
+    distroless-rootfs /rootfs /distroless/status.d \
+        $(dpkg-query -W -f='${db:Status-Status} ${Package}\n' 'percona-*' | \
+          awk '$1 == "installed" && $2 != "percona-telemetry-agent" { print $2 }'); \
+    echo "mysql:x:${MYSQL_UID}:${MYSQL_GID}:mysql:/nonexistent:/sbin/nologin" >> /rootfs/etc/passwd; \
+    echo "mysql:x:${MYSQL_GID}:" >> /rootfs/etc/group; \
+    mkdir -p /rootfs/var/lib/mysql /rootfs/var/run/mysqld; \
+    chown "${MYSQL_UID}:0" /rootfs/var/lib/mysql /rootfs/var/run/mysqld; \
+    chmod 0775 /rootfs/var/lib/mysql /rootfs/var/run/mysqld
+
+FROM distroless-base AS distroless
+COPY --from=distroless-rootfs /rootfs /
+ARG MYSQL_UID=1001
+USER ${MYSQL_UID}
+
+# The Debian image stays the default target for a plain `docker build`.
+FROM debian

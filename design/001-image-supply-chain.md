@@ -36,13 +36,15 @@ it.
 | S6 | Only images whose **inputs** changed are republished | Republishing an equivalent image moves the tags and rolls every cluster that tracks them, for nothing |
 | S7 | BuildKit SBOM + max-mode provenance on every image; keyless cosign signature over the index and every manifest | Standard, verifiable with stock tools, no key to manage |
 | S8 | CI regenerates `catalogs/catalog-<flavor>-<distro>.yaml` (ClusterImageCatalog, immutable tag + digest) after every publish | The operator's native way to pick images; applying a catalog is as reproducible as pulling by digest |
+| S9 | Every Percona Server image is also built on a distroless base, from the same pinned packages, as distro `distroless` | No shell, package manager or unused libraries in the running image; the operator never needed them |
 
 ## Pins (S1, S3)
 
 `docker-bake.hcl` holds, per image:
 
 - the base image, e.g. `debian:bookworm-slim@sha256:…`, shared by every image
-  of a distro;
+  of a distro, and for Percona Server the distroless base of the same Debian
+  release (`gcr.io/distroless/cc-debian12:latest@sha256:…`);
 - for Percona Server: the apt repos (`ps-84-lts`, `pxb-84-lts`), the apt
   component (`main`, or `testing` for pre-GA lines), and the exact package
   versions of `percona-server-server` and the XtraBackup package.
@@ -86,9 +88,10 @@ Renovate (the Mend GitHub App) reads `renovate.json`:
   comment and the value below it, and looks the package up in that apt index
   with Debian versioning. The per-series `depName` gives one PR per series and
   tool (`renovate/mysql-8.4-server-8.x`);
-- a second regex manager keeps the base images' digests current; all base
-  digest bumps are grouped into one PR (`renovate/base-images`), since they
-  rebuild every image of the distro anyway;
+- a second regex manager keeps the base images' digests current, and the
+  BusyBox image the checks use (`images/common.sh`); all of these digest bumps
+  are grouped into one PR (`renovate/base-images`), since they rebuild every
+  image of the distro anyway;
 - `helpers:pinGitHubActionDigests` keeps the workflow's actions pinned by SHA
   and current.
 
@@ -120,14 +123,57 @@ from the cache of the build it just tested) and pushes it **by digest, with no
 tag**, with `--attest type=sbom` and `--attest type=provenance,mode=max`. The
 digest is handed to the publish job as an artifact.
 
+The images under test may have no shell (S9), so `check-tools.sh` and
+`smoke.sh` bring their own: a static BusyBox, pinned by digest in
+`images/common.sh`, mounted read-only into the test container and appended to
+the image's `PATH`. The image's own binaries still win, and nothing from
+BusyBox is in a published image. The same harness runs for every image, so
+the Debian and distroless variants are tested identically.
+
 Pull requests and non-main branches run the whole matrix and publish nothing.
 The same script runs locally: `images/build.sh mysql-8-4-bookworm`.
+
+## Distroless images (S9)
+
+Each `MYSQL` entry in `docker-bake.hcl` is built twice, by a `variant` matrix
+axis: `mysql-8-4-bookworm` (Dockerfile target `debian`) and
+`mysql-8-4-distroless` (target `distroless`). Both install the same pinned
+packages in the same Debian stage; the distroless target then copies what the
+server needs onto `gcr.io/distroless/cc-debian12`, pinned by digest.
+
+`build/distroless-rootfs.sh` decides what that is. Starting from every
+installed Percona package except the telemetry agent (the server, client and
+XtraBackup packages; 9.7 splits them further into `-core` and `-plugins`), it
+runs `ldd` on every ELF file they ship (plugins included), maps each library to
+its package with `dpkg-query -S`, and repeats until no new package turns up.
+Packages the distroless base already ships (its `status.d`: glibc, libstdc++,
+OpenSSL, …) are skipped; the others are copied file by file, as the Debian
+stage has them after trimming. Package `Depends` are not followed: they
+describe installing and configuring a package and would pull in perl,
+debconf and a shell.
+
+Every copied package gets a `var/lib/dpkg/status.d/<package>` entry, the
+layout distroless itself uses, so the BuildKit SBOM and Trivy list the same
+Percona and library packages as for the Debian image. `mysql` (uid 1001) is
+added to the base's `/etc/passwd` and `/etc/group`.
+
+The result for 8.4.11 on amd64: 403 MB instead of 549 MB, and 114 Trivy
+findings (1 critical) instead of 427 (13 critical), with no shell, `apt`,
+`dpkg` or perl in the image.
+
+The distroless base must be the same Debian release as the packages: the
+libraries it keeps from the base are the ones they were built against. A move
+to trixie adds `DISTROLESS_BASES.trixie = gcr.io/distroless/cc-debian13`.
+
+MariaDB has no distroless variant: its data directory is initialized by
+`mariadb-install-db`, a shell script. It needs the instance manager to
+bootstrap MariaDB itself first.
 
 ## Skipping unchanged images (S6)
 
 `images/plan.sh` fingerprints each target: sha256 over the resolved build args
-(base digest, repos, package versions), the platforms, the Dockerfile and
-`keys/`. Tags, labels and the build id are excluded. The fingerprint is stored
+(base digests, repos, package versions), the platforms, the Dockerfile and
+the stage it builds, `keys/` and `build/`. Tags, labels and the build id are excluded. The fingerprint is stored
 on the image as the `co.cnmsql.image.inputs` label.
 
 On main, a target is built only when its published `<server>-<distro>` image
@@ -159,6 +205,10 @@ Tags, for Percona Server 8.4.11 built at 2026-10-01 12:00 UTC on bookworm:
 | `8.4.11-bookworm`, `8.4.11` | yes | newest build of 8.4.11 |
 | `8.4-bookworm`, `8.4` | yes | newest build of the newest 8.4 patch |
 
+The distroless variant gets the same tags with `distroless` as the distro
+(`8.4.11-202610011200-distroless`, `8.4.11-distroless`, `8.4-distroless`);
+bookworm stays the default distro, so the suffix-less tags remain Debian.
+
 The legacy `<series>-<N>` tags (`8.4-5`) and `<series>-<sha>` tags are no
 longer produced; the published ones stay in GHCR untouched.
 
@@ -170,7 +220,7 @@ Every image carries OCI labels (`org.opencontainers.image.version`, `.revision`,
 | `co.cnmsql.image.flavor` | `mysql` |
 | `co.cnmsql.image.series` | `8.4` |
 | `co.cnmsql.image.server-version` | `8.4.11` |
-| `co.cnmsql.image.distro` | `bookworm` |
+| `co.cnmsql.image.distro` | `bookworm` or `distroless` |
 | `co.cnmsql.image.build` | `202610011200` |
 | `co.cnmsql.image.inputs` | `sha256:…` |
 
@@ -213,7 +263,10 @@ guess:
 - the series is explicit in the catalog (`series`) and in the
   `co.cnmsql.image.series` label;
 - the exact server version is in the tag, the labels, and above all in the
-  server binary itself (`mysqld --version`), which is authoritative.
+  server binary itself (`mysqld --version`), which is authoritative;
+- the image may have no shell or coreutils: the operator only ever executes
+  the binaries in `images/required-tools.txt` and its own manager binary, which
+  it copies in, and never `sh -c`.
 
 How the operator uses this is designed on the operator side
 (cnmsql `design/033-image-version-discovery.md`).
@@ -225,3 +278,5 @@ How the operator uses this is designed on the operator side
 - Blocking on Trivy findings: the fixes come from upstream bumps, which this
   pipeline already turns into PRs.
 - Deleting old tags. Users may have pinned them.
+- A distroless MariaDB image, until the data directory bootstrap no longer
+  needs `mariadb-install-db` (S9).

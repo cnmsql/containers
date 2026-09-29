@@ -46,9 +46,23 @@ variable "BASE_BOOKWORM" {
   default = "debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251"
 }
 
+# Distroless base for the MySQL images built from a Debian release's packages.
+# It must be the same release: the libraries it already ships (glibc,
+# libstdc++, OpenSSL) are the ones the packages were built against.
+variable "DISTROLESS_BOOKWORM" {
+  # renovate: datasource=docker
+  default = "gcr.io/distroless/cc-debian12:latest@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa"
+}
+
 variable "BASES" {
   default = {
     bookworm = BASE_BOOKWORM
+  }
+}
+
+variable "DISTROLESS_BASES" {
+  default = {
+    bookworm = DISTROLESS_BOOKWORM
   }
 }
 
@@ -165,13 +179,21 @@ function "tags" {
   )
 }
 
+# base_name <image@digest>: the fully qualified name of a pinned base image.
+function "base_name" {
+  params = [base]
+  result = (length(regexall("^[^/]+[.:][^/]*/", base)) > 0
+    ? split("@", base)[0]
+    : "docker.io/library/${split("@", base)[0]}")
+}
+
 function "ref" {
   params = [image]
   result = IMAGE_PREFIX == "" ? image : "${IMAGE_PREFIX}/${image}"
 }
 
 function "labels" {
-  params = [flavor, image, description, series, server, distro]
+  params = [flavor, image, description, series, server, distro, base]
   result = {
     "org.opencontainers.image.title"          = image
     "org.opencontainers.image.description"    = description
@@ -181,8 +203,8 @@ function "labels" {
     "org.opencontainers.image.version"        = server
     "org.opencontainers.image.revision"       = REVISION
     "org.opencontainers.image.created"        = timestamp()
-    "org.opencontainers.image.base.name"      = "docker.io/library/${split("@", BASES[distro])[0]}"
-    "org.opencontainers.image.base.digest"    = split("@", BASES[distro])[1]
+    "org.opencontainers.image.base.name"      = base_name(base)
+    "org.opencontainers.image.base.digest"    = split("@", base)[1]
     "co.cnmsql.image.flavor"                  = flavor
     "co.cnmsql.image.series"                  = series
     "co.cnmsql.image.server-version"          = server
@@ -204,14 +226,18 @@ group "default" {
   targets = ["mysql", "mariadb"]
 }
 
+# Every MySQL entry is built twice: on its Debian base (tags *-<distro>) and on
+# the matching distroless base (tags *-distroless), from the same packages.
 target "mysql" {
-  name       = target_name("mysql", e.series, e.distro)
-  matrix     = { e = MYSQL }
+  name       = target_name("mysql", e.series, variant == "distroless" ? "distroless" : e.distro)
+  matrix     = { e = MYSQL, variant = ["debian", "distroless"] }
   context    = "."
   dockerfile = "Dockerfile.instance"
+  target     = variant
   platforms  = e.platforms
   args = {
     BASE_IMAGE        = BASES[e.distro]
+    DISTROLESS_IMAGE  = DISTROLESS_BASES[e.distro]
     PERCONA_COMPONENT = e.component
     PS_REPO           = e.ps_repo
     PS_VERSION        = e.ps_version
@@ -219,10 +245,11 @@ target "mysql" {
     PXB_PACKAGE       = e.pxb_package
     PXB_VERSION       = e.pxb_version
   }
-  tags = tags("cnmsql-instance", e.series, split("-", e.ps_version)[0], e.distro)
+  tags = tags("cnmsql-instance", e.series, split("-", e.ps_version)[0], variant == "distroless" ? "distroless" : e.distro)
   labels = labels(
     "mysql", "cnmsql-instance", "Slim Percona Server for MySQL instance image for the cnmsql operator",
-    e.series, split("-", e.ps_version)[0], e.distro,
+    e.series, split("-", e.ps_version)[0], variant == "distroless" ? "distroless" : e.distro,
+    variant == "distroless" ? DISTROLESS_BASES[e.distro] : BASES[e.distro],
   )
 }
 
@@ -240,6 +267,6 @@ target "mariadb" {
   tags = tags("cnmsql-mariadb-instance", e.series, regex_replace(e.package_version, "^([0-9]+:)?([0-9.]+).*$", "$2"), e.distro)
   labels = labels(
     "mariadb", "cnmsql-mariadb-instance", "Slim MariaDB instance image for the cnmsql operator",
-    e.series, regex_replace(e.package_version, "^([0-9]+:)?([0-9.]+).*$", "$2"), e.distro,
+    e.series, regex_replace(e.package_version, "^([0-9]+:)?([0-9.]+).*$", "$2"), e.distro, BASES[e.distro],
   )
 }
