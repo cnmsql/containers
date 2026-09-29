@@ -99,7 +99,7 @@ new release, or when the Debian base image is refreshed.
 | --- | --- | --- |
 | Percona Server | `8.0` | `ps-80` / `pxb-80` |
 | Percona Server | `8.4` | LTS, `ps-84-lts` / `pxb-84-lts` |
-| Percona Server | `9.x` | innovation, pre-GA `testing` component; catalog series `9.0` |
+| Percona Server | `9.7` | LTS, `ps-97-lts` / `pxb-97-lts` (XtraBackup 9.7 is still a release candidate upstream) |
 | MariaDB | `10.11`, `11.4`, `11.8`, `12.3` | LTS; 11.x and 12.x ship the `mysql*` names in `mariadb-*-compat` |
 
 Every image is built for `linux/amd64` and `linux/arm64`.
