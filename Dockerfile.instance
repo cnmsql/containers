@@ -1,3 +1,5 @@
+# check=skip=InvalidDefaultArgInFrom
+# (The base image has no default on purpose: docker-bake.hcl pins it by digest.)
 # Our own slim Percona Server instance image.
 #
 # Instead of layering onto the fat upstream `percona/percona-server` image, we
@@ -11,32 +13,31 @@
 # after every build.
 #
 # The image is parameterized by build args so a single Dockerfile covers every
-# supported version (see images/versions.json for the matrix):
+# supported version. The args, including the exact package versions, come from
+# docker-bake.hcl; build through bake rather than by hand:
 #
-#   docker build -f Dockerfile.instance \
-#     --build-arg BASE_IMAGE=debian:bookworm-slim \
-#     --build-arg PS_REPO=ps-80 \
-#     --build-arg PXB_REPO=pxb-80 \
-#     --build-arg PXB_PACKAGE=percona-xtrabackup-80 \
-#     -t cnmsql-instance:8.0-1 .
+#   docker buildx bake mysql-8-4-bookworm --load
+#
+# Package sources are verified against the Percona signing keyring committed in
+# keys/percona-keyring.gpg: nothing is downloaded and trusted at build time.
 #
 # The runtime stage runs as an unprivileged user (uid 1001); mysqld and the
 # manager never need root, and every port they bind is above 1024.
 
-ARG BASE_IMAGE=debian:bookworm-slim
-ARG PS_REPO=ps-80
-ARG PXB_REPO=pxb-80
-ARG PXB_PACKAGE=percona-xtrabackup-80
+ARG BASE_IMAGE
 
 FROM ${BASE_IMAGE}
 
 # Re-declare the args needed in this stage (ARGs do not cross FROM boundaries).
+# PS_VERSION and PXB_VERSION are exact Debian package versions, e.g.
+# 8.4.11-11-1.bookworm. PERCONA_COMPONENT is the apt component: "main" for GA
+# releases, "testing" for pre-GA ones.
+ARG PERCONA_COMPONENT=main
 ARG PS_REPO
+ARG PS_VERSION
 ARG PXB_REPO
 ARG PXB_PACKAGE
-# percona-release component: "release" for GA versions; "testing" for versions
-# Percona only ships pre-GA (e.g. 9.x innovation lives in the testing channel).
-ARG REPO_COMPONENT=release
+ARG PXB_VERSION
 
 # Fixed, unprivileged identity for the server. Created before package install so
 # the percona-server-server postinst reuses it instead of allocating a dynamic
@@ -44,6 +45,8 @@ ARG REPO_COMPONENT=release
 # arbitrary-uid platforms (OpenShift) without granting any real privilege.
 ARG MYSQL_UID=1001
 ARG MYSQL_GID=1001
+
+COPY keys/percona-keyring.gpg /usr/share/keyrings/percona-keyring.gpg
 
 RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
@@ -54,23 +57,21 @@ RUN set -eux; \
     printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d; \
     chmod +x /usr/sbin/policy-rc.d; \
     apt-get update; \
-    apt-get install -y --no-install-recommends \
-        ca-certificates curl gnupg2; \
-    # Percona's apt repo bootstrap (percona-release), then enable only the repos
-    # for the requested version and component.
-    curl -fsSLo /tmp/percona-release.deb \
-        "https://repo.percona.com/apt/percona-release_latest.${codename}_all.deb"; \
-    apt-get install -y --no-install-recommends /tmp/percona-release.deb; \
-    percona-release enable-only "${PS_REPO}" "${REPO_COMPONENT}" --scheme https; \
-    percona-release enable "${PXB_REPO}" "${REPO_COMPONENT}" --scheme https; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    # The server and XtraBackup repos for this version, plus Percona's telemetry
+    # repo: percona-server-server depends on percona-telemetry-agent, which is
+    # deleted below. These are the repos percona-release would enable, written
+    # directly so the image does not need percona-release or a key download.
+    for repo in "${PS_REPO}" "${PXB_REPO}"; do \
+        echo "deb [signed-by=/usr/share/keyrings/percona-keyring.gpg] https://repo.percona.com/${repo}/apt ${codename} ${PERCONA_COMPONENT}"; \
+    done > /etc/apt/sources.list.d/percona.list; \
+    echo "deb [signed-by=/usr/share/keyrings/percona-keyring.gpg] https://repo.percona.com/telemetry/apt ${codename} main" \
+        >> /etc/apt/sources.list.d/percona.list; \
     apt-get update; \
+    # Exact versions: percona-server-server depends on the matching client and
+    # common packages with "=", so pinning it pins the whole server.
     apt-get install -y --no-install-recommends \
-        percona-server-server "${PXB_PACKAGE}"; \
-    # NB: we deliberately do NOT purge percona-release / curl / gnupg2 here.
-    # percona-server-server's dependency chain (via percona-telemetry-agent)
-    # depends on percona-release, so purging it cascades into removing mysqld.
-    # These packages are inert at runtime — the telemetry agent never starts
-    # because `manager` is PID1 — so we just clean caches and trim instead.
+        "percona-server-server=${PS_VERSION}" "${PXB_PACKAGE}=${PXB_VERSION}"; \
     # Trim everything the manager does not need at runtime.
     #   - docs/man/locale/test suites: never used in a running instance;
     #   - *-debug binaries and the debug/ plugin variants: duplicate, huge;
@@ -86,7 +87,7 @@ RUN set -eux; \
         /etc/cron.d/percona-telemetry-agent \
         /usr/lib/systemd/system/percona-telemetry-agent.service \
         /var/lib/apt/lists/* /var/cache/apt/* \
-        /tmp/percona-release.deb /usr/sbin/policy-rc.d; \
+        /usr/sbin/policy-rc.d; \
     find /usr/lib -name '*.a' -delete; \
     # Drop the bulky mysql client utilities the instance does not need. We keep:
     # mysql + mysqladmin (operator debugging via `kubectl exec`, and liveness
