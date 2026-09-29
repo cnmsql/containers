@@ -15,17 +15,20 @@ the telemetry agent are removed.
 
 | Path | Purpose |
 | --- | --- |
-| [`Dockerfile.instance`](Dockerfile.instance) | The Percona Server instance image. Build args let one Dockerfile cover every supported MySQL version. |
-| [`Dockerfile.mariadb-instance`](Dockerfile.mariadb-instance) | The MariaDB instance image. Same slim/rootless design, built from MariaDB's official apt repo (`mariadb-server` + `mariadb-backup`). |
-| [`images/versions.json`](images/versions.json) | The Percona version matrix: base image, Percona Server / XtraBackup repos, package names, and release component per MySQL version. |
-| [`images/mariadb-versions.json`](images/mariadb-versions.json) | The MariaDB version matrix: base image and MariaDB series per version. |
-| [`images/build.sh`](images/build.sh) | Percona build driver. Reads `versions.json`, works out patch numbers, builds and optionally pushes the images. |
-| [`images/build-mariadb.sh`](images/build-mariadb.sh) | MariaDB build driver. Same behaviour as `build.sh`, reads `mariadb-versions.json`. |
-| [`images/lib.sh`](images/lib.sh) | Shared helpers (patch-version auto-detection) sourced by both build drivers. |
-| [`images/required-tools.txt`](images/required-tools.txt) | The binaries the instance manager runs in the Percona image. Checked after every build. |
-| [`images/mariadb-required-tools.txt`](images/mariadb-required-tools.txt) | The same list for the MariaDB image. |
-| [`images/check-tools.sh`](images/check-tools.sh) | Runs a built image and fails if a binary from a tools list is missing or broken. |
-| [`.github/workflows/build.yml`](.github/workflows/build.yml) | CI. Builds and checks each version of both flavours in the matrix. Pushes to GHCR on pushes to `main` and `v*` tags. |
+| [`docker-bake.hcl`](docker-bake.hcl) | The build definition and single source of truth: base image digests, exact server and backup package versions, platforms, tags and labels for every image. |
+| [`Dockerfile.instance`](Dockerfile.instance) | The Percona Server instance image. |
+| [`Dockerfile.mariadb-instance`](Dockerfile.mariadb-instance) | The MariaDB instance image. |
+| [`keys/`](keys) | The Percona and MariaDB apt signing keyrings. Package sources are verified against these; nothing is downloaded and trusted at build time. |
+| [`images/build.sh`](images/build.sh) | Builds images for one platform and runs the tools, version and smoke checks; with `--push`, pushes them by digest with an SBOM and provenance. |
+| [`images/smoke.sh`](images/smoke.sh) | Initializes a data dir, takes a physical backup, prepares and restores it, and checks the data survived. |
+| [`images/check-tools.sh`](images/check-tools.sh) | Fails if a binary from a tools list is missing or broken. |
+| [`images/required-tools.txt`](images/required-tools.txt), [`images/mariadb-required-tools.txt`](images/mariadb-required-tools.txt) | The binaries the instance manager runs in each image. |
+| [`images/plan.sh`](images/plan.sh) | Works out which images need building: those whose inputs changed since they were published. |
+| [`images/publish.sh`](images/publish.sh) | Tags the multi-platform image and signs it with cosign. |
+| [`images/catalog.sh`](images/catalog.sh) | Regenerates the `ClusterImageCatalog` manifests in [`catalogs/`](catalogs). |
+| [`renovate.json`](renovate.json) | Renovate configuration: bumps every pin in `docker-bake.hcl` and the workflow actions. |
+| [`.github/workflows/build.yml`](.github/workflows/build.yml) | CI: build and check on pull requests; build, publish, sign and update the catalogs on `main`. |
+| [`design/001-image-supply-chain.md`](design/001-image-supply-chain.md) | Design of the whole supply chain. |
 
 ## Image design
 
@@ -63,10 +66,9 @@ Images published before logical backup support strip the dump tool, so
 `cnmsql` logical backups fail on them with `LogicalToolUnavailable`. Use a
 newer patch tag of the same series.
 
-`percona-release` is left installed on purpose. `percona-server-server` depends
-on it through `percona-telemetry-agent`, so removing it would also remove
-`mysqld`. It does nothing at runtime, since `manager` is PID 1 and the telemetry
-agent binary is deleted during the build.
+The image has no `percona-release`: the build writes the Percona apt sources
+itself, signed by the committed keyring. `percona-server-server` still pulls in
+`percona-telemetry-agent`, whose binary is deleted during the build.
 
 ## MariaDB image
 
@@ -89,108 +91,89 @@ also has no `mysqld --initialize`, so `mysql_install_db` / `mariadb-install-db`
 
 ## Versions
 
-### Percona Server
+Every image is pinned in [`docker-bake.hcl`](docker-bake.hcl) to exact package
+versions. [Renovate](renovate.json) opens a PR when Percona or MariaDB ships a
+new release, or when the Debian base image is refreshed.
 
-The supported matrix lives in [`images/versions.json`](images/versions.json).
-Each entry maps a short `version` to the Percona apt repos and package names used
-to install it:
-
-| `version` | Server | Percona component |
+| Flavor | Series | Notes |
 | --- | --- | --- |
-| `8.0` | 8.0.x | release (GA) |
-| `8.4` | 8.4.x LTS | release (GA) |
-| `9.x` | 9.x innovation | testing (pre-GA) |
+| Percona Server | `8.0` | `ps-80` / `pxb-80` |
+| Percona Server | `8.4` | LTS, `ps-84-lts` / `pxb-84-lts` |
+| Percona Server | `9.x` | innovation, pre-GA `testing` component; catalog series `9.0` |
+| MariaDB | `10.11`, `11.4`, `11.8`, `12.3` | LTS; 11.x and 12.x ship the `mysql*` names in `mariadb-*-compat` |
 
-### MariaDB
+Every image is built for `linux/amd64` and `linux/arm64`.
 
-The supported matrix lives in
-[`images/mariadb-versions.json`](images/mariadb-versions.json). Each entry maps a
-short `version` to the MariaDB series enabled via the official
-`mariadb_repo_setup` script:
+To bump a version by hand, edit its pin in `docker-bake.hcl`. To add a series,
+add an entry to the `MYSQL` or `MARIADB` list, with its `# renovate:` comments.
 
-| `version` | Server | Notes |
+## Tags
+
+For Percona Server 8.4.11 built at 2026-10-01 12:00 UTC on Debian bookworm:
+
+| Tag | Moves? | Points to |
 | --- | --- | --- |
-| `10.11` | 10.11.x LTS | ships `mysql*` names directly |
-| `11.4` | 11.4.x LTS | uses `mariadb-*-compat` for `mysql*` names |
-| `11.8` | 11.8.x LTS | uses `mariadb-*-compat` for `mysql*` names |
-| `12.3` | 12.3.x LTS | uses `mariadb-*-compat` for `mysql*` names |
+| `8.4.11-202610011200-bookworm` | never | this build |
+| `8.4.11-bookworm`, `8.4.11` | yes | newest build of 8.4.11 |
+| `8.4-bookworm`, `8.4` | yes | newest build of the newest 8.4 patch |
 
-To add or bump a version, edit the relevant matrix file. Both the build drivers
-and the CI matrix read from them.
+An image is rebuilt when its inputs change: a new package version, a new base
+image digest, or a Dockerfile change. Rebuilding an image whose inputs did not
+change is skipped, so the moving tags only move for a real change.
+
+Older tags (`8.4-5`, `8.4-<sha>`) stay published but are no longer produced.
+
+## Catalogs
+
+[`catalogs/`](catalogs) holds a `ClusterImageCatalog` per flavor and distro,
+regenerated after every publish. Each entry pins the newest image of a series by
+immutable tag and digest:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/cnmsql/containers/main/catalogs/catalog-mysql-bookworm.yaml
+```
+
+## Verifying images
+
+Images are signed with [cosign](https://github.com/sigstore/cosign), keyless,
+by this repository's build workflow, and carry an SPDX SBOM and SLSA provenance:
+
+```bash
+cosign verify ghcr.io/cnmsql/cnmsql-instance:8.4 \
+  --certificate-identity-regexp '^https://github.com/cnmsql/containers/\.github/workflows/build\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+docker buildx imagetools inspect ghcr.io/cnmsql/cnmsql-instance:8.4 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/cnmsql/cnmsql-instance:8.4 --format '{{ json .Provenance }}'
+```
 
 ## Building locally
 
-Build every version in the matrix:
+Needs Docker with buildx, `jq` and `skopeo`.
 
 ```bash
-images/build.sh
+docker buildx bake --print                 # every image, fully resolved
+images/build.sh mysql-8-4-bookworm         # build + check + smoke test one image
+images/build.sh mariadb                    # every MariaDB image
+images/build.sh --platform linux/arm64 mysql-8-4-bookworm   # needs arm64 or QEMU
 ```
 
-Build only specific versions:
-
-```bash
-images/build.sh 8.0 8.4
-```
-
-The MariaDB images build the same way through `images/build-mariadb.sh`:
-
-```bash
-images/build-mariadb.sh          # every MariaDB version
-images/build-mariadb.sh 11.4     # only 11.4
-```
-
-### Tagging
-
-Each image is tagged `<MYSQL_VERSION>-<PATCH_VERSION>` (for example `8.0-1`,
-`8.4-3`). Each one also gets a bare `<MYSQL_VERSION>` tag (for example `8.0`)
-that moves to point at the latest patch.
-
-The patch number is detected by querying the target registry for existing tags,
-trying these in order:
-
-1. **GitHub Packages API**, when `GH_TOKEN` is set (this is the CI path).
-2. **crane**, which runs the `go-containerregistry/crane` image to list tags from
-   a generic OCI registry.
-3. **Fallback**, which starts at `1`.
-
-You can skip detection with `PATCH_VERSION=N` or `--patch=N`. The override
-applies to every version built in that run.
-
-### Configuration
-
-The build reads these environment variables:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `REGISTRY` | `cnmsql-instance` (Percona) / `cnmsql-mariadb-instance` (MariaDB) | Image name prefix and target repository. |
-| `PUSH` | _(unset)_ | Set to `1` to push after building. |
-| `PATCH_VERSION` | _(auto)_ | Manual patch override for all built versions. |
-| `GH_TOKEN` | _(unset)_ | GitHub token for GHCR tag lookup (CI). |
-| `CONTAINER_TOOL` | `docker` | Container CLI to use, for example `podman`. |
-
-Build and push `8.0` to GHCR:
-
-```bash
-REGISTRY=ghcr.io/cnmsql/cnmsql-instance \
-GH_TOKEN="$(gh auth token)" \
-PUSH=1 \
-images/build.sh 8.0
-```
+Target names are `<flavor>-<series with dashes>-<distro>`. Locally built images
+are tagged `cnmsql-build/<target>:<os>-<arch>`.
 
 ## CI
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) reads the version
-lists from `versions.json` and `mariadb-versions.json`, then builds and checks
-each version of both flavours in parallel (see [Required tools](#required-tools)).
+[`.github/workflows/build.yml`](.github/workflows/build.yml):
 
-- On pushes to `main`, it pushes `<version>-<short-sha>` tags.
-- On `v*` tags, it pushes release tags (`<version>-<patch>` and the moving
-  `<version>`).
-- On pull requests, it only builds and checks. It never logs in or pushes.
+- **Pull requests and branches** build every image on native amd64 and arm64
+  runners, run the tools, version and smoke checks and a Trivy scan, and push
+  nothing.
+- **`main`** rebuilds only the images whose inputs changed, pushes them to
+  `ghcr.io/<owner>/cnmsql-instance` and `ghcr.io/<owner>/cnmsql-mariadb-instance`,
+  signs them, and commits the regenerated catalogs.
+- **`workflow_dispatch`** with `force` rebuilds and republishes everything.
 
-Images go to `ghcr.io/<owner>/cnmsql-instance` and
-`ghcr.io/<owner>/cnmsql-mariadb-instance`. You can also start the workflow by
-hand with `workflow_dispatch`.
+See [the design](design/001-image-supply-chain.md) for the details.
 
 ## License
 
