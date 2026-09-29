@@ -10,11 +10,17 @@
 # Usage:
 #   images/smoke.sh <image> <mysql|mariadb>
 #
-# Runs in a throwaway container as the image's own user, with no network.
+# Runs in a throwaway container as the image's own user, with no network and a
+# mounted BusyBox shell (the image may have none), so the script inside is
+# plain POSIX sh.
 #
 # Environment:
 #   CONTAINER_TOOL      container CLI (default: docker)
 set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=images/common.sh
+. "${here}/common.sh"
 
 if [ $# -ne 2 ]; then
   echo "usage: $0 <image> <mysql|mariadb>" >&2
@@ -22,23 +28,23 @@ if [ $# -ne 2 ]; then
 fi
 image="$1"
 flavor="$2"
-CONTAINER_TOOL="${CONTAINER_TOOL:-docker}"
 
 echo ">> smoke testing ${image} (${flavor})"
 
 # shellcheck disable=SC2016 # the script expands inside the container
-"${CONTAINER_TOOL}" run --rm -i --network none --entrypoint bash "${image}" -s -- "${flavor}" <<'EOF'
-set -euo pipefail
+run_with_shell "${image}" -s -- "${flavor}" <<'EOF'
+set -eu
+set -o pipefail
 flavor="$1"
 work="$(mktemp -d)"
 sock="${work}/server.sock"
 
 if [ "${flavor}" = mysql ]; then
   server=mysqld client=mysql admin=mysqladmin backup=xtrabackup
-  extra=(--mysqlx=OFF --secure-file-priv=)
+  extra="--mysqlx=OFF --secure-file-priv="
 else
   server=mariadbd client=mariadb admin=mariadb-admin backup=mariabackup
-  extra=()
+  extra=""
 fi
 
 fail() {
@@ -49,7 +55,7 @@ fail() {
 
 start() {
   "${server}" --no-defaults --datadir="$1" --socket="${sock}" --skip-networking \
-    --pid-file="${work}/server.pid" --log-error="${work}/server.log" "${extra[@]}" &
+    --pid-file="${work}/server.pid" --log-error="${work}/server.log" ${extra} &
   for _ in $(seq 120); do
     "${admin}" --no-defaults -uroot -S "${sock}" ping >/dev/null 2>&1 && return 0
     sleep 1

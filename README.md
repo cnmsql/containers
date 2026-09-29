@@ -18,10 +18,12 @@ the telemetry agent are removed.
 | [`docker-bake.hcl`](docker-bake.hcl) | The build definition and single source of truth: base image digests, exact server and backup package versions, platforms, tags and labels for every image. |
 | [`Dockerfile.instance`](Dockerfile.instance) | The Percona Server instance image. |
 | [`Dockerfile.mariadb-instance`](Dockerfile.mariadb-instance) | The MariaDB instance image. |
+| [`build/distroless-rootfs.sh`](build/distroless-rootfs.sh) | Collects the files the distroless Percona image adds to its base: the pinned packages and the libraries they load. |
 | [`keys/`](keys) | The Percona and MariaDB apt signing keyrings. Package sources are verified against these; nothing is downloaded and trusted at build time. |
 | [`images/build.sh`](images/build.sh) | Builds images for one platform and runs the tools, version and smoke checks; with `--push`, pushes them by digest with an SBOM and provenance. |
 | [`images/smoke.sh`](images/smoke.sh) | Initializes a data dir, takes a physical backup, prepares and restores it, and checks the data survived. |
 | [`images/check-tools.sh`](images/check-tools.sh) | Fails if a binary from a tools list is missing or broken. |
+| [`images/common.sh`](images/common.sh) | Helpers shared by the scripts, and the pinned BusyBox the checks mount into images that have no shell. |
 | [`images/required-tools.txt`](images/required-tools.txt), [`images/mariadb-required-tools.txt`](images/mariadb-required-tools.txt) | The binaries the instance manager runs in each image. |
 | [`images/plan.sh`](images/plan.sh) | Works out which images need building: those whose inputs changed since they were published. |
 | [`images/publish.sh`](images/publish.sh) | Tags the multi-platform image and signs it with cosign. |
@@ -65,6 +67,25 @@ to the image.
 Images published before logical backup support strip the dump tool, so
 `cnmsql` logical backups fail on them with `LogicalToolUnavailable`. Use a
 newer patch tag of the same series.
+
+### Distroless variant
+
+Every Percona Server image is also published as a distroless image
+(`8.4-distroless`, …), built from the same pinned packages. It starts from
+`gcr.io/distroless/cc-debian12` and adds only the Percona packages and the
+shared libraries their binaries and plugins load, found by following `ldd`
+(see [`build/distroless-rootfs.sh`](build/distroless-rootfs.sh)). It has no
+shell, package manager, coreutils or perl. The installed packages are still
+recorded in `/var/lib/dpkg/status.d`, so SBOMs and scanners list them.
+
+For 8.4.11 on amd64 it is 403 MB instead of 549 MB, and Trivy reports 114
+findings (1 critical) instead of 427 (13 critical). The operator runs the same
+way on both, since it only executes the binaries listed in the tools file. To
+debug a running instance, use `kubectl debug` with an ephemeral container
+instead of `kubectl exec … sh`.
+
+MariaDB has no distroless variant yet: its data directory is initialized by a
+shell script (`mariadb-install-db`).
 
 The image has no `percona-release`: the build writes the Percona apt sources
 itself, signed by the committed keyring. `percona-server-server` still pulls in
@@ -117,6 +138,10 @@ For Percona Server 8.4.11 built at 2026-10-01 12:00 UTC on Debian bookworm:
 | `8.4.11-bookworm`, `8.4.11` | yes | newest build of 8.4.11 |
 | `8.4-bookworm`, `8.4` | yes | newest build of the newest 8.4 patch |
 
+The distroless variant has the same tags with `distroless` in place of
+`bookworm` (`8.4.11-202610011200-distroless`, `8.4.11-distroless`,
+`8.4-distroless`). The tags without a distro are the bookworm images.
+
 An image is rebuilt when its inputs change: a new package version, a new base
 image digest, or a Dockerfile change. Rebuilding an image whose inputs did not
 change is skipped, so the moving tags only move for a real change.
@@ -131,6 +156,7 @@ immutable tag and digest:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/cnmsql/containers/main/catalogs/catalog-mysql-bookworm.yaml
+# or catalogs/catalog-mysql-distroless.yaml for the distroless images
 ```
 
 ## Verifying images
@@ -154,6 +180,7 @@ Needs Docker with buildx, `jq` and `skopeo`.
 ```bash
 docker buildx bake --print                 # every image, fully resolved
 images/build.sh mysql-8-4-bookworm         # build + check + smoke test one image
+images/build.sh mysql-8-4-distroless       # the same server, distroless
 images/build.sh mariadb                    # every MariaDB image
 images/build.sh --platform linux/arm64 mysql-8-4-bookworm   # needs arm64 or QEMU
 ```

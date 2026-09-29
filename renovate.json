@@ -19,10 +19,10 @@
     },
     {
       "customType": "regex",
-      "description": "Base images pinned by digest in docker-bake.hcl",
-      "managerFilePatterns": ["/(^|/)docker-bake\\.hcl$/"],
+      "description": "Base and test images pinned by digest in docker-bake.hcl and images/common.sh",
+      "managerFilePatterns": ["/(^|/)docker-bake\\.hcl$/", "/(^|/)images/common\\.sh$/"],
       "matchStrings": [
-        "#\\s*renovate:\\s*datasource=docker\\s*\\n\\s*default\\s*=\\s*\"(?<depName>[^:\"]+):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]+)\""
+        "#\\s*renovate:\\s*datasource=docker\\s*\\n\\s*\\w+\\s*=\\s*\"(?<depName>[^:\"]+):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]+)\""
       ],
       "datasourceTemplate": "docker"
     }
