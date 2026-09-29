@@ -92,17 +92,16 @@ variable "MYSQL" {
       platforms   = ["linux/amd64", "linux/arm64"]
     },
     {
-      series         = "9.x"
-      catalog_series = "9.0"
-      distro         = "bookworm"
-      component      = "testing"
-      ps_repo        = "ps-9x-innovation"
-      pxb_repo       = "pxb-9x-innovation"
-      pxb_package    = "percona-xtrabackup-96"
-      # renovate: datasource=deb depName=mysql-9.x-server packageName=percona-server-server registryUrl=https://repo.percona.com/ps-9x-innovation/apt?suite=bookworm&components=testing&binaryArch=amd64
-      ps_version = "9.6.0-1-1.bookworm"
-      # renovate: datasource=deb depName=mysql-9.x-xtrabackup packageName=percona-xtrabackup-96 registryUrl=https://repo.percona.com/pxb-9x-innovation/apt?suite=bookworm&components=testing&binaryArch=amd64
-      pxb_version = "9.6.0-1-1.bookworm"
+      series      = "9.7"
+      distro      = "bookworm"
+      component   = "main"
+      ps_repo     = "ps-97-lts"
+      pxb_repo    = "pxb-97-lts"
+      pxb_package = "percona-xtrabackup-97"
+      # renovate: datasource=deb depName=mysql-9.7-server packageName=percona-server-server registryUrl=https://repo.percona.com/ps-97-lts/apt?suite=bookworm&components=main&binaryArch=amd64
+      ps_version = "9.7.2-2-1.bookworm"
+      # renovate: datasource=deb depName=mysql-9.7-xtrabackup packageName=percona-xtrabackup-97 registryUrl=https://repo.percona.com/pxb-97-lts/apt?suite=bookworm&components=main&binaryArch=amd64
+      pxb_version = "9.7.1~rc1-1.bookworm"
       platforms   = ["linux/amd64", "linux/arm64"]
     },
   ]
