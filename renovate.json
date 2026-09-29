@@ -1,0 +1,45 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Keeps every pin in docker-bake.hcl and the workflows current. See design/001-image-supply-chain.md.",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "semanticCommits": "enabled",
+  "labels": ["dependencies"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Server and backup packages pinned to exact Debian versions in docker-bake.hcl",
+      "managerFilePatterns": ["/(^|/)docker-bake\\.hcl$/"],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>deb)\\s+depName=(?<depName>\\S+)\\s+packageName=(?<packageName>\\S+)\\s+registryUrl=(?<registryUrl>\\S+)\\s*\\n\\s*\\w+\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "versioningTemplate": "deb"
+    },
+    {
+      "customType": "regex",
+      "description": "Base images pinned by digest in docker-bake.hcl",
+      "managerFilePatterns": ["/(^|/)docker-bake\\.hcl$/"],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=docker\\s*\\n\\s*default\\s*=\\s*\"(?<depName>[^:\"]+):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]+)\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Instance image pins: never automerge, the PR build and smoke test are the gate and merging publishes",
+      "matchManagers": ["custom.regex"],
+      "automerge": false,
+      "addLabels": ["images"]
+    },
+    {
+      "description": "Base image digests refresh every image of a distro at once",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["docker"],
+      "groupName": "base images",
+      "commitMessageTopic": "base image {{depName}}:{{currentValue}}"
+    }
+  ]
+}
