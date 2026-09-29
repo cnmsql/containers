@@ -59,8 +59,6 @@ variable "BASES" {
 # apt repos. The server version in the tags is the upstream part of ps_version
 # (8.4.11-11-1.bookworm -> 8.4.11). component is the apt component: "main" for
 # GA releases, "testing" for pre-GA ones.
-# catalog_series is the series the published ClusterImageCatalog maps the image
-# to, when it differs from series.
 # --------------------------------------------------------------------------
 
 variable "MYSQL" {
@@ -173,7 +171,7 @@ function "ref" {
 }
 
 function "labels" {
-  params = [flavor, image, description, series, catalog_series, server, distro]
+  params = [flavor, image, description, series, server, distro]
   result = {
     "org.opencontainers.image.title"          = image
     "org.opencontainers.image.description"    = description
@@ -187,7 +185,6 @@ function "labels" {
     "org.opencontainers.image.base.digest"    = split("@", BASES[distro])[1]
     "co.cnmsql.image.flavor"                  = flavor
     "co.cnmsql.image.series"                  = series
-    "co.cnmsql.image.catalog-series"          = catalog_series
     "co.cnmsql.image.server-version"          = server
     "co.cnmsql.image.distro"                  = distro
     "co.cnmsql.image.build"                   = BUILD_ID
@@ -225,7 +222,7 @@ target "mysql" {
   tags = tags("cnmsql-instance", e.series, split("-", e.ps_version)[0], e.distro)
   labels = labels(
     "mysql", "cnmsql-instance", "Slim Percona Server for MySQL instance image for the cnmsql operator",
-    e.series, try(e.catalog_series, e.series), split("-", e.ps_version)[0], e.distro,
+    e.series, split("-", e.ps_version)[0], e.distro,
   )
 }
 
@@ -243,6 +240,6 @@ target "mariadb" {
   tags = tags("cnmsql-mariadb-instance", e.series, regex_replace(e.package_version, "^([0-9]+:)?([0-9.]+).*$", "$2"), e.distro)
   labels = labels(
     "mariadb", "cnmsql-mariadb-instance", "Slim MariaDB instance image for the cnmsql operator",
-    e.series, try(e.catalog_series, e.series), regex_replace(e.package_version, "^([0-9]+:)?([0-9.]+).*$", "$2"), e.distro,
+    e.series, regex_replace(e.package_version, "^([0-9]+:)?([0-9.]+).*$", "$2"), e.distro,
   )
 }
