@@ -169,7 +169,6 @@ Every image carries OCI labels (`org.opencontainers.image.version`, `.revision`,
 |---|---|
 | `co.cnmsql.image.flavor` | `mysql` |
 | `co.cnmsql.image.series` | `8.4` |
-| `co.cnmsql.image.catalog-series` | `8.4` (`9.0` for the legacy `9.x` line) |
 | `co.cnmsql.image.server-version` | `8.4.11` |
 | `co.cnmsql.image.distro` | `bookworm` |
 | `co.cnmsql.image.build` | `202610011200` |
@@ -212,7 +211,7 @@ The operator should not have to trust a tag for anything beyond a first
 guess:
 
 - the series is explicit in the catalog (`series`) and in the
-  `co.cnmsql.image.series` / `catalog-series` labels;
+  `co.cnmsql.image.series` label;
 - the exact server version is in the tag, the labels, and above all in the
   server binary itself (`mysqld --version`), which is authoritative.
 

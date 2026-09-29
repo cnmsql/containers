@@ -31,7 +31,7 @@ for t in $(bake_targets); do
   digest="$(published_digest "${current}")"
   flavor="$(jq -r '.["co.cnmsql.image.flavor"]' <<<"$labels")"
   distro="$(jq -r '.["co.cnmsql.image.distro"]' <<<"$labels")"
-  series="$(jq -r '.["co.cnmsql.image.catalog-series"]' <<<"$labels")"
+  series="$(jq -r '.["co.cnmsql.image.series"]' <<<"$labels")"
   server="$(jq -r '.["co.cnmsql.image.server-version"]' <<<"$labels")"
   build="$(jq -r '.["co.cnmsql.image.build"]' <<<"$labels")"
   printf '    - series: "%s"\n      image: %s:%s-%s-%s@%s\n' \
