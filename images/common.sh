@@ -78,7 +78,7 @@ published_digest() {
 # images ship no shell, so every image is tested with the same one; nothing
 # from it ends up in an image.
 # renovate: datasource=docker
-TEST_SHELL_IMAGE="busybox:1.37.0-musl@sha256:5cec3fc171c87218698e85a52af7087de727372aae264a787b8112901a5b0092"
+TEST_SHELL_IMAGE="busybox:1.38.0-musl@sha256:ea2b9914a16a4ac1981994af97b318f7c7d4db76b580c56177f08bf76f4a0be8"
 test_shell_mount=/.cnmsql-test
 
 # test_shell_dir <platform>: a directory holding BusyBox for platform and a link
