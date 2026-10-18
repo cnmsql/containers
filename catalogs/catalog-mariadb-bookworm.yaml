@@ -7,10 +7,10 @@ spec:
   flavor: mariadb
   images:
     - series: "10.11"
-      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:10.11.19-202609301625-bookworm@sha256:4a3e4820d3019f6b22b2c06aa5f9c5a0e99e2890cb6fc25dbae927af139e3544
+      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:10.11.19-202610091632-bookworm@sha256:679603d9865500312bb74facdfa0e5029cdadecda988e5d3f836455d4544303b
     - series: "11.4"
-      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:11.4.13-202609301625-bookworm@sha256:ed40b6954ae49df3dd307995a25431e99bbe4a3900fc00446cca4701c715f382
+      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:11.4.13-202610091632-bookworm@sha256:ab8fdf823d7cc8123cbce2b5f4d40cc208f0b1e78352c725ea2d30c90ada2c75
     - series: "11.8"
-      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:11.8.9-202609301625-bookworm@sha256:6057200d462bea3497661e2a6ae5f09e51f6b1dc61e3a3b7b20f4d92bc217ea5
+      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:11.8.9-202610091632-bookworm@sha256:855cae0a7ab50ba170106219a14dff74d31d0d2085076ee789fbe4232cc88bf9
     - series: "12.3"
-      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:12.3.3-202609301625-bookworm@sha256:b9e3106567920f3c157cf29b2ace89c8a32bb44fc8904eee6e1fea0f431e5292
+      image: ghcr.io/cnmsql/cnmsql-mariadb-instance:12.3.3-202610091632-bookworm@sha256:70676555581e7f0a7f6c9080d86ef53df2b44cdafdb799c2e96794773d0fca2c

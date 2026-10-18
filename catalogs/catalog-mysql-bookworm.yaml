@@ -7,8 +7,8 @@ spec:
   flavor: mysql
   images:
     - series: "8.0"
-      image: ghcr.io/cnmsql/cnmsql-instance:8.0.46-202609301625-bookworm@sha256:7609f85052deeba92db0b675094dde3e1eba5380b4d581db585780fd6cac2741
+      image: ghcr.io/cnmsql/cnmsql-instance:8.0.46-202610091632-bookworm@sha256:c76cb4c66da0be799890e6d8c39f815a9518bf9585cc21bac2d7fa2e104c50a0
     - series: "8.4"
-      image: ghcr.io/cnmsql/cnmsql-instance:8.4.11-202609301625-bookworm@sha256:f2bfa9cf057aa1e051d18cfa64cb6741456f0b6827da1046d2b27d1d6bf58cd9
+      image: ghcr.io/cnmsql/cnmsql-instance:8.4.11-202610091632-bookworm@sha256:325d92c652114c12133b10403641cf2e6e22a7951711371906a9095df93ae54a
     - series: "9.7"
-      image: ghcr.io/cnmsql/cnmsql-instance:9.7.2-202609301625-bookworm@sha256:99e1c60b280125264c18293f1d1007041aac1ef0ce94f238e4835f98564e8166
+      image: ghcr.io/cnmsql/cnmsql-instance:9.7.2-202610091632-bookworm@sha256:78ad9731e4db031cb71c6b1805e7d9bd3985c3a744f64bd24e6d0ce6540a1d97
