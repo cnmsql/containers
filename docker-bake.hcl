@@ -113,7 +113,7 @@ variable "MYSQL" {
       # renovate: datasource=deb depName=mysql-9.7-server packageName=percona-server-server registryUrl=https://repo.percona.com/ps-97-lts/apt?suite=bookworm&components=main&binaryArch=amd64
       ps_version = "9.7.2-2-1.bookworm"
       # renovate: datasource=deb depName=mysql-9.7-xtrabackup packageName=percona-xtrabackup-97 registryUrl=https://repo.percona.com/pxb-97-lts/apt?suite=bookworm&components=main&binaryArch=amd64
-      pxb_version = "9.7.1~rc1-1.bookworm"
+      pxb_version = "9.7.2-2-1.bookworm"
       platforms   = ["linux/amd64", "linux/arm64"]
     },
   ]
