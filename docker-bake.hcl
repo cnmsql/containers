@@ -98,7 +98,7 @@ variable "MYSQL" {
       pxb_repo    = "pxb-84-lts"
       pxb_package = "percona-xtrabackup-84"
       # renovate: datasource=deb depName=mysql-8.4-server packageName=percona-server-server registryUrl=https://repo.percona.com/ps-84-lts/apt?suite=bookworm&components=main&binaryArch=amd64
-      ps_version = "8.4.11-11-1.bookworm"
+      ps_version = "8.4.11-12-1.bookworm"
       # renovate: datasource=deb depName=mysql-8.4-xtrabackup packageName=percona-xtrabackup-84 registryUrl=https://repo.percona.com/pxb-84-lts/apt?suite=bookworm&components=main&binaryArch=amd64
       pxb_version = "8.4.0-7-1.bookworm"
       platforms   = ["linux/amd64", "linux/arm64"]
