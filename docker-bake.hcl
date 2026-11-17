@@ -134,7 +134,7 @@ variable "MARIADB" {
       series = "10.11"
       distro = "bookworm"
       # renovate: datasource=deb depName=mariadb-10.11-server packageName=mariadb-server registryUrl=https://dlm.mariadb.com/repo/mariadb-server/10.11/repo/debian?suite=bookworm&components=main&binaryArch=amd64
-      package_version = "1:10.11.19+maria~deb12"
+      package_version = "1:10.11.20+maria~deb12"
       platforms       = ["linux/amd64", "linux/arm64"]
     },
     {
