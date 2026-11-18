@@ -7,7 +7,7 @@ spec:
   flavor: mysql
   images:
     - series: "8.0"
-      image: ghcr.io/cnmsql/cnmsql-instance:8.0.46-202610091632-distroless@sha256:a394c3e1b82405bbaf331f65c63bd9d45442dcc711df3bc6551cda59db850fef
+      image: ghcr.io/cnmsql/cnmsql-instance:8.0.46-202611181251-distroless@sha256:2bfa771b90d8a7516162e27281fb494359e3abe48a01b13d041e327c452ea870
     - series: "8.4"
       image: ghcr.io/cnmsql/cnmsql-instance:8.4.11-202610091632-distroless@sha256:cef420520d5bef6456901280f1af56d959fab799144ad45b95c53b029e18d12a
     - series: "9.7"
