@@ -9,6 +9,6 @@ spec:
     - series: "8.0"
       image: ghcr.io/cnmsql/cnmsql-instance:8.0.46-202611181251-distroless@sha256:2bfa771b90d8a7516162e27281fb494359e3abe48a01b13d041e327c452ea870
     - series: "8.4"
-      image: ghcr.io/cnmsql/cnmsql-instance:8.4.11-202610091632-distroless@sha256:cef420520d5bef6456901280f1af56d959fab799144ad45b95c53b029e18d12a
+      image: ghcr.io/cnmsql/cnmsql-instance:8.4.11-202611191525-distroless@sha256:0b98c3065fcbc8982be36d7e8c2ed947670ab66ca872549b45a7278fac1b2975
     - series: "9.7"
       image: ghcr.io/cnmsql/cnmsql-instance:9.7.2-202610091632-distroless@sha256:bafb74ed1468bc6f93de5ecbf1b70d2ad7d038998fc13fe786e04d8d24a8ba2c
