@@ -11,4 +11,4 @@ spec:
     - series: "8.4"
       image: ghcr.io/cnmsql/cnmsql-instance:8.4.11-202611191525-bookworm@sha256:7a91c8a024334a0933f56bb8eac1f2b2049b6a9646de83ad70e71aa041050946
     - series: "9.7"
-      image: ghcr.io/cnmsql/cnmsql-instance:9.7.2-202610091632-bookworm@sha256:78ad9731e4db031cb71c6b1805e7d9bd3985c3a744f64bd24e6d0ce6540a1d97
+      image: ghcr.io/cnmsql/cnmsql-instance:9.7.2-202611191530-bookworm@sha256:f88af6de8500f3b5a13c0e4c02d7b10a37a5c2cd214291413aa7da3ca9fd47bc
