@@ -78,10 +78,15 @@ RUN set -eux; \
     echo "deb [signed-by=/usr/share/keyrings/percona-keyring.gpg] https://repo.percona.com/telemetry/apt ${codename} main" \
         >> /etc/apt/sources.list.d/percona.list; \
     apt-get update; \
-    # Exact versions: percona-server-server depends on the matching client and
-    # common packages with "=", so pinning it pins the whole server.
+    # Exact versions. percona-server-server depends on the matching client and
+    # common packages with "=", but apt does not resolve those to the pinned
+    # build: it takes the newest, then fails with "held broken packages" as soon
+    # as upstream publishes another build. Pin all three explicitly.
     apt-get install -y --no-install-recommends \
-        "percona-server-server=${PS_VERSION}" "${PXB_PACKAGE}=${PXB_VERSION}"; \
+        "percona-server-server=${PS_VERSION}" \
+        "percona-server-common=${PS_VERSION}" \
+        "percona-server-client=${PS_VERSION}" \
+        "${PXB_PACKAGE}=${PXB_VERSION}"; \
     # Trim everything the manager does not need at runtime.
     #   - docs/man/locale/test suites: never used in a running instance;
     #   - *-debug binaries and the debug/ plugin variants: duplicate, huge;

@@ -40,6 +40,24 @@
       "matchDatasources": ["docker"],
       "groupName": "base images",
       "commitMessageTopic": "base image {{depName}}:{{currentValue}}"
+    },
+    {
+      "description": "Percona 8.0: server and XtraBackup move together, so one PR rebuilds the image once",
+      "matchDepNames": ["/^mysql-8\\.0-(server|xtrabackup)$/"],
+      "groupName": "percona 8.0",
+      "commitMessageTopic": "Percona 8.0 packages"
+    },
+    {
+      "description": "Percona 8.4: server and XtraBackup move together, so one PR rebuilds the image once",
+      "matchDepNames": ["/^mysql-8\\.4-(server|xtrabackup)$/"],
+      "groupName": "percona 8.4",
+      "commitMessageTopic": "Percona 8.4 packages"
+    },
+    {
+      "description": "Percona 9.7: server and XtraBackup move together, so one PR rebuilds the image once",
+      "matchDepNames": ["/^mysql-9\\.7-(server|xtrabackup)$/"],
+      "groupName": "percona 9.7",
+      "commitMessageTopic": "Percona 9.7 packages"
     }
   ]
 }
