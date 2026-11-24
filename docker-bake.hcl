@@ -43,7 +43,7 @@ variable "SOURCE" {
 
 variable "BASE_BOOKWORM" {
   # renovate: datasource=docker
-  default = "debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc"
+  default = "debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e"
 }
 
 # Distroless base for the MySQL images built from a Debian release's packages.
